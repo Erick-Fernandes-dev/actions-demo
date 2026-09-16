@@ -1,0 +1,21 @@
+# 1. Pasta e download (versão atual 2.337.0)
+mkdir -p ~/actions-runner && cd ~/actions-runner
+curl -o actions-runner-linux-x64-2.337.0.tar.gz -L \
+  https://github.com/actions/runner/releases/download/v2.337.0/actions-runner-linux-x64-2.337.0.tar.gz
+
+# 2. Validar hash (opcional, mas recomendado)
+echo "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613  actions-runner-linux-x64-2.337.0.tar.gz" | shasum -a 256 -c
+
+# 3. Extrair
+tar xzf ./actions-runner-linux-x64-2.337.0.tar.gz
+
+# 4. Registrar — com --labels, senão o runs-on: [self-hosted, linux, k8s] não casa
+./config.sh \
+  --url https://github.com/Erick-Fernandes-dev/actions-demo \
+  --token ANQGA7NE4XRJWKYWPX3VTMTKVK2LG \
+  --name kind-k9s \
+  --labels self-hosted,linux,k8s \
+  --unattended
+
+# 5. Rodar (deixe o terminal aberto)
+./run.sh

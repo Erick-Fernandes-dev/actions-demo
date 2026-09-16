@@ -44,12 +44,17 @@ jobs:
       name: ${{ inputs.environment }}
       url: ${{ vars.APP_URL }}
     env:
-      IMAGE: ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}
+      IMAGE_TAG: ${{ inputs.image_tag }}
       NAMESPACE: ${{ vars.K8S_NAMESPACE || format('actions-demo-{0}', inputs.environment) }}
       DEPLOYMENT: actions-demo
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Definir imagem (Docker exige nome em minúsculas)
+        run: |
+          REPO="${{ github.repository }}"
+          echo "IMAGE=ghcr.io/${REPO,,}:${IMAGE_TAG}" >> "$GITHUB_ENV"
 
       - name: Validar pré-requisitos do runner
         run: |

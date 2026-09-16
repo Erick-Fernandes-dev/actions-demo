@@ -1,0 +1,40 @@
+# Runner self-hosted DENTRO do cluster com Actions Runner Controller (ARC), modo oficial.
+#
+# 1) Instalar o controller (uma vez por cluster):
+#    helm install arc --namespace arc-systems --create-namespace \
+#      oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
+#
+# 2) Criar secret com PAT ou GitHub App (recomendado App):
+#    kubectl create ns arc-runners
+#    kubectl -n arc-runners create secret generic gh-auth --from-literal=github_token=github_pat_xxx
+#
+# 3) Instalar o scale set (um por repo/org). O NOME DO RELEASE vira a label usada em runs-on:
+#    helm install k8s --namespace arc-runners -f runner/arc-values.yaml \
+#      oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+#
+#    -> nos workflows: runs-on: k8s   (ou ajuste para "self-hosted, linux, k8s" trocando o release name)
+#
+# Como funciona: o listener do ARC faz long-polling HTTPS de SAÍDA para o GitHub; quando um job
+# aparece na fila, ele cria um Pod runner efêmero, o pod executa 1 job e é destruído.
+# Nenhuma porta de entrada, nenhuma regra de firewall, e o pod tem acesso à rede interna do cluster.
+
+githubConfigUrl: https://github.com/SEU_USUARIO/actions-demo
+githubConfigSecret: gh-auth
+
+minRunners: 0
+maxRunners: 5
+
+# "dind" permite docker build dentro do job; "kubernetes" usa pods auxiliares sem docker daemon
+containerMode:
+  type: dind
+
+template:
+  spec:
+    serviceAccountName: arc-runner          # SA com RBAC para dar kubectl apply no namespace da app
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        resources:
+          requests: { cpu: 250m, memory: 512Mi }
+          limits:   { cpu: "1",  memory: 2Gi }

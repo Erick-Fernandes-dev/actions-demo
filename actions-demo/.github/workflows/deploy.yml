@@ -1,0 +1,101 @@
+# =====================================================================
+# Deploy — workflow reutilizável (chamado pelo CI) e manual (workflow_dispatch).
+# Roda em RUNNER SELF-HOSTED dentro do cluster: o kubectl fala com a API do k8s
+# pela rede interna; nenhuma porta é aberta para fora, o runner só faz saída HTTPS
+# para o GitHub.
+# =====================================================================
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      image_tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente de destino
+        type: choice
+        options: [staging, production]
+        default: staging
+      image_tag:
+        description: "Tag da imagem (ex. sha curto a1b2c3d)"
+        type: string
+        required: true
+
+concurrency:
+  group: deploy-${{ inputs.environment }}   # nunca dois deploys no mesmo ambiente ao mesmo tempo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    name: Deploy → ${{ inputs.environment }}
+    runs-on: [self-hosted, linux, k8s]        # labels definidas ao registrar o runner
+    timeout-minutes: 15
+    environment:                              # ativa secrets/vars por ambiente e aprovação manual (production)
+      name: ${{ inputs.environment }}
+      url: ${{ vars.APP_URL }}
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}:${{ inputs.image_tag }}
+      NAMESPACE: ${{ vars.K8S_NAMESPACE || format('actions-demo-{0}', inputs.environment) }}
+      DEPLOYMENT: actions-demo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar pré-requisitos do runner
+        run: |
+          command -v kubectl >/dev/null || { echo "::error::kubectl não encontrado no runner"; exit 1; }
+          kubectl cluster-info
+
+      - name: Renderizar manifests
+        run: |
+          mkdir -p out
+          for f in k8s/*.yaml; do envsubst < "$f" > "out/$(basename "$f")"; done
+          cat out/*.yaml
+
+      - name: Garantir namespace e pull secret do GHCR
+        run: |
+          kubectl get ns "$NAMESPACE" >/dev/null 2>&1 || kubectl create ns "$NAMESPACE"
+          kubectl -n "$NAMESPACE" create secret docker-registry ghcr-pull \
+            --docker-server=ghcr.io \
+            --docker-username="${{ github.actor }}" \
+            --docker-password="${{ secrets.GITHUB_TOKEN }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Aplicar
+        run: kubectl -n "$NAMESPACE" apply -f out/
+
+      - name: Aguardar rollout
+        id: rollout
+        run: kubectl -n "$NAMESPACE" rollout status deployment/"$DEPLOYMENT" --timeout=180s
+
+      - name: Smoke test interno (DNS do cluster)
+        run: |
+          kubectl -n "$NAMESPACE" run smoke-${{ github.run_id }} --rm -i --restart=Never \
+            --image=curlimages/curl:8.10.1 -- \
+            -fsS --retry 10 --retry-delay 2 --retry-all-errors \
+            "http://$DEPLOYMENT.$NAMESPACE.svc.cluster.local/health"
+
+      - name: Rollback automático
+        if: failure() && steps.rollout.outcome != 'skipped'
+        run: |
+          echo "::warning::Deploy falhou, revertendo para a revisão anterior"
+          kubectl -n "$NAMESPACE" rollout undo deployment/"$DEPLOYMENT"
+
+      - name: Resumo
+        if: success()
+        run: |
+          {
+            echo "### Deploy em **${{ inputs.environment }}** concluído :white_check_mark:"
+            echo "- Imagem: \`$IMAGE\`"
+            echo "- Namespace: \`$NAMESPACE\`"
+          } >> "$GITHUB_STEP_SUMMARY"

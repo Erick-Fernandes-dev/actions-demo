@@ -1,0 +1,14 @@
+# Job agendado (cron em UTC) — ex.: verificar se staging está de pé toda madrugada
+name: Nightly health check
+
+on:
+  schedule:
+    - cron: "0 6 * * 1-5"     # 06:00 UTC, seg-sex (03:00 em Brasília)
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: [self-hosted, linux, k8s]
+    environment: staging
+    steps:
+      - run: kubectl -n actions-demo-staging get pods -l app=actions-demo

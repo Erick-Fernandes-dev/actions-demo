@@ -1,0 +1,72 @@
+# Exemplos de condicionais avançadas e interação com o PR
+name: PR checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  changes:
+    name: Detectar o que mudou
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            app:
+              - 'app/**'
+              - 'requirements*.txt'
+              - 'Dockerfile'
+            infra:
+              - 'k8s/**'
+              - '.github/workflows/**'
+
+  validate-k8s:
+    name: Validar manifests k8s
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'          # só roda se mexeu em infra
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          export IMAGE=ghcr.io/x/y:test NAMESPACE=test
+          for f in k8s/*.yaml; do envsubst < "$f" | ./kubeconform -strict -summary; done
+
+  skip-ci-label:
+    name: Exemplo de condição por label/autor
+    runs-on: ubuntu-latest
+    if: >
+      contains(github.event.pull_request.labels.*.name, 'hotfix') ||
+      github.actor == 'dependabot[bot]'
+    steps:
+      - run: echo "PR de hotfix ou do dependabot — regras diferentes aqui"
+
+  comment:
+    name: Comentar no PR
+    needs: [changes, validate-k8s]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              '### Resultado das checagens',
+              `- app alterado: ${{ needs.changes.outputs.app }}`,
+              `- infra alterada: ${{ needs.changes.outputs.infra }}`,
+              `- validate-k8s: ${{ needs.validate-k8s.result }}`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              ...context.repo, issue_number: context.issue.number, body,
+            });

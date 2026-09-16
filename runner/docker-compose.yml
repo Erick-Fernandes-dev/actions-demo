@@ -1,0 +1,18 @@
+# Runner self-hosted em container Docker (bom para testar rápido em qualquer máquina).
+# Requer: GITHUB_PAT (fine-grained com permissão "Administration: write" no repo) em .env
+#   echo "GITHUB_PAT=github_pat_xxx" > .env
+#   docker compose up -d
+services:
+  runner:
+    image: myoung34/github-runner:latest
+    restart: unless-stopped
+    environment:
+      REPO_URL: https://github.com/SEU_USUARIO/actions-demo
+      ACCESS_TOKEN: ${GITHUB_PAT}
+      RUNNER_NAME_PREFIX: docker-runner
+      LABELS: self-hosted,linux,k8s
+      EPHEMERAL: "true"          # um job por container; recria limpo depois
+      RUNNER_SCOPE: repo
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   # permite "docker build" dentro do job
+      - ${HOME}/.kube:/home/runner/.kube:ro         # kubeconfig para kubectl

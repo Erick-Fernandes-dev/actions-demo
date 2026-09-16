@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: actions-demo
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: actions-demo
+  ports:
+    - port: 80
+      targetPort: http
+      name: http

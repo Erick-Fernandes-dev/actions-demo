@@ -7,7 +7,7 @@ services:
     image: myoung34/github-runner:latest
     restart: unless-stopped
     environment:
-      REPO_URL: https://github.com/SEU_USUARIO/actions-demo
+      REPO_URL: https://github.com/Erick-Fernandes-dev/actions-demo
       ACCESS_TOKEN: ${GITHUB_PAT}
       RUNNER_NAME_PREFIX: docker-runner
       LABELS: self-hosted,linux,k8s

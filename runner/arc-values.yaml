@@ -18,7 +18,7 @@
 # aparece na fila, ele cria um Pod runner efêmero, o pod executa 1 job e é destruído.
 # Nenhuma porta de entrada, nenhuma regra de firewall, e o pod tem acesso à rede interna do cluster.
 
-githubConfigUrl: https://github.com/SEU_USUARIO/actions-demo
+githubConfigUrl: https://github.com/Erick-Fernandes-dev/actions-demo
 githubConfigSecret: gh-auth
 
 minRunners: 0
